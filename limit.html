@@ -1,0 +1,1124 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Edutin Smart-Notes Ultra + Live Tables</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        :root { --edutin-orange: #ff6b00; --edutin-blue: #0a2540; --edutin-gray: #f4f7f9; }
+        body { background-color: var(--edutin-gray); font-family: 'Inter', system-ui, sans-serif; color: #0a2540; transition: all 0.3s ease; }
+
+        /* Carpetas */
+        .folder-pill { transition: all 0.3s; cursor: pointer; display: flex; align-items: center; gap: 8px; border: 2px solid transparent; }
+        .folder-pill.active { background-color: var(--edutin-orange) !important; color: white !important; box-shadow: 0 10px 20px -5px rgba(255,107,0,0.3); }
+        .delete-folder-btn { padding: 2px; border-radius: 4px; transition: 0.2s; opacity: 0.5; font-size: 10px; }
+        .delete-folder-btn:hover { background: rgba(0,0,0,0.1); opacity: 1; }
+
+        /* Notas */
+        .card-note { transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); border-radius: 2.5rem; position: relative; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.05); }
+        .card-note:hover { transform: translateY(-8px); box-shadow: 0 30px 60px -12px rgba(255,107,0,0.15); }
+        .delete-btn { position: absolute; top: 1.5rem; right: 1.5rem; width: 32px; height: 32px; background: #fee2e2; color: #ef4444; border-radius: 12px; display: flex; align-items: center; justify-content: center; opacity: 0; transition: 0.2s; border: none; cursor: pointer; z-index: 10; }
+        .card-note:hover .delete-btn { opacity: 1; }
+
+        /* Tablas */
+        .excel-table { border-collapse: collapse; width: 100%; background: white; border-radius: 1rem; overflow: hidden; }
+        .excel-table td, .excel-table th { border: 1px solid rgba(0,0,0,0.08); padding: 0; min-width: 130px; position: relative; }
+        .excel-table th { background: rgba(0,0,0,0.03); font-weight: 800; text-transform: uppercase; font-size: 0.7rem; color: #64748b; text-align: left !important; padding: 14px; }
+        .cell-editor { padding: 14px; min-height: 50px; outline: none; width: 100%; height: 100%; text-align: left !important; }
+        .selected-cell { outline: 3px solid var(--edutin-orange) !important; outline-offset: -3px; background-color: rgba(255,107,0,0.1) !important; z-index: 20; }
+
+        /* Colores Dots */
+        .color-dot { width: 22px; height: 22px; border-radius: 7px; cursor: pointer; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.1); transition: 0.2s; flex-shrink: 0; }
+        .color-dot:hover { transform: scale(1.3); z-index: 10; }
+
+        /* Placeholders */
+        [contenteditable]:empty:before { content: attr(data-placeholder); color: inherit; opacity: 0.4; pointer-events: none; display: block; }
+
+        /* Hoja Dinámica Canvas */
+        .paper-sheet-container { background: #0f172a; border-radius: 2rem; width: 100%; max-width: 1100px; margin: 0 auto; min-height: 700px; display: flex; flex-direction: column; overflow: hidden; }
+        .code-textarea { width: 100%; min-height: 650px; background: transparent; color: #10b981; font-family: 'Fira Code', monospace; font-size: 15px; padding: 40px; outline: none; border: none; resize: none; text-align: left !important; }
+
+        /* Clases de Colores */
+        .bg-white { background-color: #ffffff; color: #0a2540; }
+        .bg-yellow-300 { background-color: #fde047; color: #0a2540; }
+        .bg-orange-500 { background-color: #ff6b00; color: white; }
+        .bg-red-500 { background-color: #ef4444; color: white; }
+        .bg-pink-400 { background-color: #f472b6; color: white; }
+        .bg-teal-400 { background-color: #2dd4bf; color: #0a2540; }
+        .bg-lime-400 { background-color: #a3e635; color: #0a2540; }
+        .bg-purple-800 { background-color: #6b21a8; color: white; }
+        .bg-blue-950 { background-color: #0a2540; color: white; }
+        .bg-slate-700 { background-color: #334155; color: white; }
+        .bg-emerald-900 { background-color: #064e3b; color: white; }
+        .bg-amber-900 { background-color: #78350f; color: white; }
+
+        .dark-text-needed #modal-title, .dark-text-needed #modal-body, .dark-text-needed [contenteditable] { color: white !important; }
+        [contenteditable]:focus { outline: none; }
+
+        /* ─── IMAGEN: wrapper de redimensión ─── */
+        .note-img {
+            max-width: 100%;
+            border-radius: 1.5rem;
+            display: block;
+            margin: 1rem 0;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+            vertical-align: middle;
+            /* sin resize CSS — lo manejamos con JS */
+        }
+
+        /* Wrapper posicionado alrededor de la imagen cuando está seleccionada */
+        .img-resize-wrapper {
+            display: inline-block;
+            position: relative;
+            line-height: 0;
+            margin: 1rem 0;
+            vertical-align: middle;
+        }
+
+        .img-resize-wrapper img {
+            display: block;
+            border-radius: 1.5rem;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+            max-width: 100%;
+        }
+
+        /* Borde naranja cuando está seleccionada */
+        .img-resize-wrapper.selected img {
+            outline: 3px solid var(--edutin-orange);
+            outline-offset: 2px;
+        }
+
+        /* Handles de esquina */
+        .img-resize-wrapper .resize-handle {
+            display: none;
+            position: absolute;
+            width: 14px;
+            height: 14px;
+            background: var(--edutin-orange);
+            border: 2px solid white;
+            border-radius: 4px;
+            z-index: 100;
+            box-shadow: 0 2px 6px rgba(255,107,0,0.5);
+        }
+        .img-resize-wrapper.selected .resize-handle { display: block; }
+
+        .resize-handle.nw { top: -6px;  left: -6px;  cursor: nw-resize; }
+        .resize-handle.ne { top: -6px;  right: -6px; cursor: ne-resize; }
+        .resize-handle.sw { bottom: -6px; left: -6px;  cursor: sw-resize; }
+        .resize-handle.se { bottom: -6px; right: -6px; cursor: se-resize; }
+
+        /* Etiqueta de dimensiones */
+        .img-resize-wrapper .size-label {
+            display: none;
+            position: absolute;
+            bottom: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(10,37,64,0.75);
+            color: white;
+            font-size: 10px;
+            font-weight: 700;
+            padding: 3px 8px;
+            border-radius: 8px;
+            pointer-events: none;
+            white-space: nowrap;
+        }
+        .img-resize-wrapper.resizing .size-label { display: block; }
+
+        #download-spinner {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(10,37,64,0.45);
+            backdrop-filter: blur(4px);
+            z-index: 9999;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            gap: 16px;
+        }
+        #download-spinner.show { display: flex; }
+        .spinner-ring {
+            width: 52px; height: 52px;
+            border: 4px solid rgba(255,107,0,0.25);
+            border-top-color: #ff6b00;
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;700&display=swap" rel="stylesheet">
+</head>
+<body class="min-h-screen pb-32">
+
+    <header class="px-6 py-8 max-w-7xl mx-auto flex flex-col gap-6">
+        <div class="flex justify-between items-center">
+            <div class="flex items-center gap-4">
+                <div class="bg-[#ff6b00] text-white w-14 h-14 rounded-[1.2rem] flex items-center justify-center font-black italic text-3xl shadow-lg">U</div>
+                <h1 class="text-lg font-black uppercase tracking-widest mt-1">Smart-Notes</h1>
+            </div>
+            <button onclick="cleanCurrentFolder()" class="text-[9px] font-black text-red-400 bg-white border border-slate-200 px-5 py-2.5 rounded-xl uppercase hover:bg-red-50">Vaciar Carpeta</button>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-3 bg-white/50 p-4 rounded-[2rem] border border-white shadow-sm">
+            <div id="folder-list" class="flex flex-wrap gap-2"></div>
+            <button onclick="createNewFolder()" class="bg-white border-2 border-dashed border-slate-300 text-slate-400 px-6 py-2 rounded-full text-xs font-black uppercase hover:border-[#ff6b00] transition-all">+ Nueva Carpeta</button>
+        </div>
+        
+        <div class="bg-white rounded-[2rem] p-2 shadow-xl border border-slate-100">
+            <input type="text" id="search-input" oninput="render()" placeholder="Buscar notas..." class="w-full bg-slate-50 border-none rounded-[1.5rem] px-6 py-4 text-sm outline-none">
+        </div>
+    </header>
+
+    <main class="max-w-7xl mx-auto p-6">
+        <div id="notes-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8"></div>
+    </main>
+
+    <div id="editor-modal" class="fixed inset-0 bg-white z-[150] hidden flex-col">
+        <div class="p-4 border-b flex items-center justify-between bg-gray-50/95 backdrop-blur-md shadow-sm gap-3 flex-nowrap overflow-x-auto">
+            <!-- IZQUIERDA -->
+            <div class="flex items-center gap-3 flex-shrink-0">
+                <button onclick="closeModal()" class="text-[10px] font-black text-[#ff6b00] uppercase bg-white border px-5 py-2.5 rounded-xl shadow-sm whitespace-nowrap">← SALIR</button>
+
+                <!-- Paleta de colores en una sola fila -->
+                <div class="flex items-center gap-1.5 p-2 bg-white rounded-2xl border flex-shrink-0">
+                    <div onclick="applyColor('bg-white')" class="color-dot bg-white border-slate-200"></div>
+                    <div onclick="applyColor('bg-yellow-300')" class="color-dot bg-yellow-300"></div>
+                    <div onclick="applyColor('bg-orange-500')" class="color-dot bg-orange-500"></div>
+                    <div onclick="applyColor('bg-red-500')" class="color-dot bg-red-500"></div>
+                    <div onclick="applyColor('bg-pink-400')" class="color-dot bg-pink-400"></div>
+                    <div onclick="applyColor('bg-teal-400')" class="color-dot bg-teal-400"></div>
+                    <div onclick="applyColor('bg-purple-800')" class="color-dot bg-purple-800"></div>
+                    <div onclick="applyColor('bg-blue-950')" class="color-dot bg-blue-950"></div>
+                    <div onclick="applyColor('bg-slate-700')" class="color-dot bg-slate-700"></div>
+                    <div onclick="applyColor('bg-lime-400')" class="color-dot bg-lime-400"></div>
+                    <div onclick="applyColor('bg-emerald-900')" class="color-dot bg-emerald-900"></div>
+                    <div onclick="applyColor('bg-amber-900')" class="color-dot bg-amber-900"></div>
+                </div>
+
+                <div id="excel-tools" class="hidden items-center gap-2 border-l pl-3">
+                    <button onclick="addRow()" class="text-[9px] font-black bg-white border px-4 py-2.5 rounded-xl uppercase whitespace-nowrap">+ Fila</button>
+                    <button onclick="addCol()" class="text-[9px] font-black bg-white border px-4 py-2.5 rounded-xl uppercase whitespace-nowrap">+ Col</button>
+                    <button onclick="paintColumn()" class="text-[9px] font-black bg-[#ff6b00] text-white px-4 py-2.5 rounded-xl uppercase shadow-md whitespace-nowrap">Pintar Col</button>
+                </div>
+
+                <div id="image-tools" class="hidden items-center gap-2 border-l pl-3">
+                    <label class="cursor-pointer text-[9px] font-black bg-white border px-4 py-2.5 rounded-xl uppercase hover:bg-slate-50 whitespace-nowrap">
+                        📷 Subir Imagen
+                        <input type="file" accept="image/*" class="hidden" onchange="insertImage(this)">
+                    </label>
+                </div>
+            </div>
+
+            <!-- DERECHA -->
+            <div class="flex items-center gap-2 flex-shrink-0">
+                <select id="move-to-folder" onchange="changeNoteFolder(this.value)" class="text-[10px] font-black uppercase border rounded-xl px-3 py-2.5 bg-white outline-none cursor-pointer"></select>
+
+                <div class="relative" id="download-btn-wrap">
+                    <button onclick="toggleDownloadMenu(event)" class="flex items-center gap-1.5 bg-[#0a2540] text-white px-5 py-2.5 rounded-xl font-black text-[10px] uppercase shadow-lg hover:bg-[#0d2f52] transition-all whitespace-nowrap">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 3v12"/></svg>
+                        Descargar
+                    </button>
+                </div>
+
+                <button onclick="closeModal()" class="bg-[#ff6b00] text-white px-8 py-2.5 rounded-xl font-black text-[10px] uppercase shadow-lg whitespace-nowrap">Guardar</button>
+            </div>
+        </div>
+        <div class="p-8 md:p-12 overflow-y-auto h-full" id="editor-content-area" onclick="clearSelection(event)">
+            <div id="modal-title" contenteditable="true" data-placeholder="Título de la nota..." class="text-6xl font-black mb-12 outline-none border-l-[12px] border-[#ff6b00] pl-10 text-left"></div>
+            <div id="modal-body" class="text-xl leading-relaxed text-left"></div>
+        </div>
+    </div>
+
+    <div id="type-menu" class="fixed inset-0 bg-slate-900/60 backdrop-blur hidden items-center justify-center z-[200]" onclick="this.classList.replace('flex', 'hidden')">
+        <div class="bg-white p-12 rounded-[3.5rem] flex gap-8 shadow-2xl scale-110" onclick="event.stopPropagation()">
+            <button onclick="addNote('text')" class="flex flex-col items-center group">
+                <div class="w-24 h-24 bg-orange-50 rounded-[2.5rem] flex items-center justify-center text-5xl group-hover:scale-110 transition shadow-inner">📝</div>
+                <span class="mt-4 text-[11px] font-black text-[#ff6b00] uppercase tracking-widest">Texto</span>
+            </button>
+            <button onclick="addNote('table')" class="flex flex-col items-center group">
+                <div class="w-24 h-24 bg-blue-50 rounded-[2.5rem] flex items-center justify-center text-5xl group-hover:scale-110 transition shadow-inner">📊</div>
+                <span class="mt-4 text-[11px] font-black text-[#ff6b00] uppercase tracking-widest">Tabla</span>
+            </button>
+            <button onclick="addNote('html-canvas')" class="flex flex-col items-center group">
+                <div class="w-24 h-24 bg-emerald-50 rounded-[2.5rem] flex items-center justify-center text-5xl group-hover:scale-110 transition shadow-inner">🌐</div>
+                <span class="mt-4 text-[11px] font-black text-[#ff6b00] uppercase tracking-widest">Canvas</span>
+            </button>
+        </div>
+    </div>
+
+    <button onclick="document.getElementById('type-menu').classList.replace('hidden', 'flex')" class="fixed bottom-10 right-10 bg-[#ff6b00] text-white w-20 h-20 rounded-[2.2rem] flex items-center justify-center shadow-2xl hover:scale-110 transition-all z-40 border-4 border-white">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="4" d="M12 4v16m8-8H4" /></svg>
+    </button>
+
+    <!-- Menú de descarga — fuera de cualquier stacking context -->
+    <div id="download-menu" style="position:fixed;z-index:999999;background:white;border-radius:1.2rem;box-shadow:0 20px 50px -10px rgba(10,37,64,0.3);border:1px solid rgba(0,0,0,0.08);overflow:hidden;min-width:190px;opacity:0;transform:translateY(-8px) scale(0.97);pointer-events:none;transition:all 0.18s cubic-bezier(0.175,0.885,0.32,1.275);">
+        <button onclick="downloadNote('pdf')" style="display:flex;align-items:center;gap:10px;width:100%;padding:13px 18px;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.05em;color:#0a2540;background:transparent;border:none;cursor:pointer;transition:background 0.15s" onmouseover="this.style.background='#f4f7f9'" onmouseout="this.style.background='transparent'">
+            <span style="width:28px;height:28px;border-radius:8px;background:#fee2e2;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0">📄</span> PDF
+        </button>
+        <button onclick="downloadNote('png')" style="display:flex;align-items:center;gap:10px;width:100%;padding:13px 18px;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.05em;color:#0a2540;background:transparent;border:none;cursor:pointer;transition:background 0.15s" onmouseover="this.style.background='#f4f7f9'" onmouseout="this.style.background='transparent'">
+            <span style="width:28px;height:28px;border-radius:8px;background:#e0f2fe;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0">🖼️</span> Imagen PNG
+        </button>
+        <button onclick="downloadNote('html')" style="display:flex;align-items:center;gap:10px;width:100%;padding:13px 18px;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.05em;color:#0a2540;background:transparent;border:none;cursor:pointer;transition:background 0.15s" onmouseover="this.style.background='#f4f7f9'" onmouseout="this.style.background='transparent'">
+            <span style="width:28px;height:28px;border-radius:8px;background:#fef9c3;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0">🌐</span> HTML
+        </button>
+        <button onclick="downloadNote('md')" style="display:flex;align-items:center;gap:10px;width:100%;padding:13px 18px;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.05em;color:#0a2540;background:transparent;border:none;cursor:pointer;transition:background 0.15s" onmouseover="this.style.background='#f4f7f9'" onmouseout="this.style.background='transparent'">
+            <span style="width:28px;height:28px;border-radius:8px;background:#f0fdf4;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0">📝</span> Markdown
+        </button>
+    </div>
+
+    <!-- Spinner de descarga -->
+    <div id="download-spinner">
+        <div class="spinner-ring"></div>
+        <span style="color:white;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:0.1em" id="spinner-label">Generando archivo...</span>
+    </div>
+
+    <script>
+        let notes = JSON.parse(localStorage.getItem('edutin_ultra_v9')) || [];
+        let folders = JSON.parse(localStorage.getItem('edutin_folders_v9')) || ['General', 'Estrategia', 'SEO'];
+        let currentFolder = 'Todas';
+        let currentId = null;
+        let activeCell = null;
+
+        const darkColors = ['bg-purple-800', 'bg-blue-950', 'bg-slate-700', 'bg-emerald-900', 'bg-amber-900', 'bg-orange-500', 'bg-red-500'];
+
+        function save() { 
+            localStorage.setItem('edutin_ultra_v9', JSON.stringify(notes)); 
+            localStorage.setItem('edutin_folders_v9', JSON.stringify(folders));
+            render(); 
+        }
+
+        function clearSelection(e) {
+            if (e && !e.target.closest('td') && !e.target.closest('th')) {
+                activeCell = null;
+                document.querySelectorAll('.selected-cell').forEach(el => el.classList.remove('selected-cell'));
+            }
+            // Deseleccionar imágenes al hacer clic fuera
+            if (e && !e.target.closest('.img-resize-wrapper')) {
+                document.querySelectorAll('.img-resize-wrapper.selected').forEach(w => w.classList.remove('selected'));
+            }
+        }
+
+        /* ══════════════════════════════════════════════════════
+           SISTEMA DE REDIMENSIÓN DE IMÁGENES
+           ══════════════════════════════════════════════════════ */
+
+        /**
+         * Envuelve cada <img class="note-img"> del editor en un wrapper
+         * con handles arrastrables. Se llama después de cargar el contenido.
+         */
+        function initImageResize(editable) {
+            // Procesar solo imgs que aún no tienen wrapper
+            editable.querySelectorAll('img.note-img').forEach(img => {
+                if (img.closest('.img-resize-wrapper')) return; // ya tiene wrapper
+                wrapImage(img);
+            });
+        }
+
+        function wrapImage(img) {
+            const wrapper = document.createElement('span');
+            wrapper.className = 'img-resize-wrapper';
+            wrapper.contentEditable = 'false'; // el wrapper no es editable, solo la img vive dentro
+
+            // Etiqueta de tamaño
+            const label = document.createElement('span');
+            label.className = 'size-label';
+            wrapper.appendChild(label);
+
+            // Insertar wrapper donde estaba la imagen
+            img.parentNode.insertBefore(wrapper, img);
+            wrapper.appendChild(img);
+
+            // Asegurar tamaño inicial
+            if (!img.style.width) img.style.width = Math.min(img.naturalWidth || 300, 300) + 'px';
+            img.style.height = 'auto';
+
+            // Handles de las 4 esquinas
+            ['nw', 'ne', 'sw', 'se'].forEach(dir => {
+                const handle = document.createElement('span');
+                handle.className = `resize-handle ${dir}`;
+                handle.dataset.dir = dir;
+                wrapper.appendChild(handle);
+
+                handle.addEventListener('mousedown', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    startResize(e, img, wrapper, label, dir);
+                });
+            });
+
+            // Seleccionar al hacer clic en la imagen
+            img.addEventListener('click', (e) => {
+                e.stopPropagation();
+                document.querySelectorAll('.img-resize-wrapper.selected').forEach(w => {
+                    if (w !== wrapper) w.classList.remove('selected');
+                });
+                wrapper.classList.toggle('selected');
+            });
+
+            // Borrar con tecla Supr / Backspace cuando está seleccionada
+            document.addEventListener('keydown', (e) => {
+                if ((e.key === 'Delete' || e.key === 'Backspace') && wrapper.classList.contains('selected')) {
+                    // Solo si el foco no está en un input/contenteditable diferente
+                    const focused = document.activeElement;
+                    if (!focused || focused.tagName === 'BODY' || focused === document.getElementById('editor-content-area')) {
+                        e.preventDefault();
+                        saveContentBeforeRemove();
+                        wrapper.remove();
+                        persistContent();
+                    }
+                }
+            });
+        }
+
+        function startResize(e, img, wrapper, label, dir) {
+            const startX = e.clientX;
+            const startW = img.offsetWidth;
+            const startH = img.offsetHeight;
+            const aspectRatio = startH / startW;
+
+            wrapper.classList.add('resizing');
+
+            function onMove(ev) {
+                let dx = ev.clientX - startX;
+                // nw y sw invierten el delta horizontal
+                if (dir === 'nw' || dir === 'sw') dx = -dx;
+
+                let newW = Math.max(80, startW + dx);
+                let newH = newW * aspectRatio;
+
+                img.style.width = newW + 'px';
+                img.style.height = newH + 'px';
+                label.textContent = `${Math.round(newW)} × ${Math.round(newH)}`;
+            }
+
+            function onUp() {
+                wrapper.classList.remove('resizing');
+                document.removeEventListener('mousemove', onMove);
+                document.removeEventListener('mouseup', onUp);
+                // Guardar el nuevo tamaño en la nota
+                persistContent();
+            }
+
+            document.addEventListener('mousemove', onMove);
+            document.addEventListener('mouseup', onUp);
+        }
+
+        function saveContentBeforeRemove() {
+            // Se llama justo ANTES de remover un wrapper para no perder referencia
+        }
+
+        /** Serializa el contenido del editor y lo persiste en la nota actual */
+        function persistContent() {
+            const note = notes.find(n => n.id === currentId);
+            if (!note || note.type !== 'text') return;
+            const editable = document.getElementById('modal-body').querySelector('[contenteditable="true"]');
+            if (editable) {
+                note.content = editable.innerHTML;
+                localStorage.setItem('edutin_ultra_v9', JSON.stringify(notes));
+            }
+        }
+
+        /* ══════════════════════════════════════════════════════ */
+
+        function insertImage(input) {
+            if (input.files && input.files[0]) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const modalBody = document.getElementById('modal-body');
+                    const editable = modalBody.querySelector('[contenteditable="true"]');
+                    if (editable) {
+                        editable.focus();
+
+                        // Crear la imagen directamente como nodo
+                        const img = document.createElement('img');
+                        img.src = e.target.result;
+                        img.className = 'note-img';
+                        img.style.width = '300px';
+                        img.style.height = 'auto';
+
+                        // Insertar en la posición del cursor o al final
+                        const sel = window.getSelection();
+                        if (sel && sel.rangeCount > 0) {
+                            const range = sel.getRangeAt(0);
+                            if (editable.contains(range.commonAncestorContainer)) {
+                                range.deleteContents();
+                                range.insertNode(img);
+                                range.setStartAfter(img);
+                                range.collapse(true);
+                                sel.removeAllRanges();
+                                sel.addRange(range);
+                            } else {
+                                editable.appendChild(img);
+                            }
+                        } else {
+                            editable.appendChild(img);
+                        }
+
+                        // Envolver con el sistema de resize
+                        wrapImage(img);
+
+                        persistContent();
+                    }
+                };
+                reader.readAsDataURL(input.files[0]);
+            }
+        }
+
+        function addNote(type) {
+            const id = Date.now();
+            let content = (type === 'table') ? [['ENCABEZADO 1', 'ENCABEZADO 2'], ['', '']] : '';
+            notes.unshift({ id, type, title: '', content, color: 'bg-white', folder: (currentFolder === 'Todas' ? 'General' : currentFolder), cellColors: {}, lang: 'html' });
+            save();
+            document.getElementById('type-menu').classList.replace('flex', 'hidden');
+            openEditor(id);
+        }
+
+        function setLang(val) {
+            const note = notes.find(n => n.id === currentId);
+            if (!note) return;
+            note.lang = val;
+            save();
+
+            const langColors = { html:'#e34c26', css:'#264de4', javascript:'#f7df1e', java:'#b07219', python:'#3572A5', sql:'#e38c00', json:'#40bf77', bash:'#89e051', markdown:'#083fa1' };
+            const langLabels = { html:'HTML', css:'CSS', javascript:'JavaScript', java:'Java', python:'Python', sql:'SQL', json:'JSON', bash:'Bash', markdown:'Markdown' };
+
+            // Actualizar estilos de todos los botones
+            Object.keys(langColors).forEach(l => {
+                const btn = document.getElementById('lang-btn-' + l);
+                if (!btn) return;
+                const active = l === val;
+                const c = langColors[l];
+                btn.style.border = `2px solid ${active ? c : 'transparent'}`;
+                btn.style.color = active ? c : '#94a3b8';
+                btn.style.background = active ? c + '18' : 'transparent';
+            });
+
+            // EJECUTAR siempre visible (el comportamiento cambia según el lenguaje)
+            const runWrap = document.getElementById('run-btn-wrap');
+            if (runWrap) {
+                runWrap.innerHTML = `<button onclick="launchPreview()" class="bg-[#ff6b00] text-white px-6 py-1.5 rounded-xl text-[10px] font-black uppercase flex items-center gap-1.5">▶ EJECUTAR</button>`;
+            }
+
+            // Actualizar placeholder
+            const ta = document.getElementById('html-code-editor');
+            if (ta) ta.placeholder = `Escribe tu código ${langLabels[val] || val} aquí...`;
+        }
+
+        function openEditor(id) {
+            currentId = id; activeCell = null;
+            const note = notes.find(n => n.id === id);
+            const contentArea = document.getElementById('editor-content-area');
+            const modalBody = document.getElementById('modal-body');
+            const modalTitle = document.getElementById('modal-title');
+            
+            contentArea.className = `p-8 md:p-12 overflow-y-auto h-full ${note.color}`;
+            if(darkColors.includes(note.color)) contentArea.classList.add('dark-text-needed');
+            else contentArea.classList.remove('dark-text-needed');
+
+            modalTitle.innerText = note.title;
+            modalTitle.oninput = (e) => { note.title = e.target.innerText; save(); };
+
+            document.getElementById('move-to-folder').innerHTML = folders.map(f => `<option value="${f}" ${f === note.folder ? 'selected' : ''}>Mover a: ${f}</option>`).join('');
+
+            if(note.type === 'table') {
+                document.getElementById('excel-tools').classList.remove('hidden');
+                document.getElementById('image-tools').classList.add('hidden');
+                renderExcel(note);
+            } else if(note.type === 'html-canvas') {
+                document.getElementById('excel-tools').classList.add('hidden');
+                document.getElementById('image-tools').classList.add('hidden');
+
+                // Guardar lenguaje en la nota (por defecto html)
+                if (!note.lang) note.lang = 'html';
+
+                const langOptions = [
+                    { val: 'html',       label: 'HTML',        color: '#e34c26' },
+                    { val: 'css',        label: 'CSS',         color: '#264de4' },
+                    { val: 'javascript', label: 'JavaScript',  color: '#f7df1e' },
+                    { val: 'java',       label: 'Java',        color: '#b07219' },
+                    { val: 'python',     label: 'Python',      color: '#3572A5' },
+                    { val: 'sql',        label: 'SQL',         color: '#e38c00' },
+                    { val: 'json',       label: 'JSON',        color: '#40bf77' },
+                    { val: 'bash',       label: 'Bash',        color: '#89e051' },
+                    { val: 'markdown',   label: 'Markdown',    color: '#083fa1' },
+                ];
+
+                const currentLang = langOptions.find(l => l.val === note.lang) || langOptions[0];
+
+                const langBtns = langOptions.map(l => `
+                    <button onclick="setLang('${l.val}')"
+                        id="lang-btn-${l.val}"
+                        style="padding:5px 12px;border-radius:8px;font-size:10px;font-weight:800;text-transform:uppercase;border:2px solid ${l.val === note.lang ? l.color : 'transparent'};color:${l.val === note.lang ? l.color : '#94a3b8'};background:${l.val === note.lang ? l.color+'18' : 'transparent'};cursor:pointer;transition:all 0.15s;white-space:nowrap">
+                        ${l.label}
+                    </button>`).join('');
+
+                // Botón EJECUTAR para todos los lenguajes
+                const runBtn = `<button onclick="launchPreview()" class="bg-[#ff6b00] text-white px-6 py-1.5 rounded-xl text-[10px] font-black uppercase flex items-center gap-1.5">▶ EJECUTAR</button>`;
+
+                modalBody.innerHTML = `
+                    <div class="py-10 flex flex-col items-center gap-8">
+                        <div class="paper-sheet-container" id="editor-sheet">
+                            <div class="bg-slate-800 px-6 py-3 flex items-center justify-between gap-4 flex-wrap">
+                                <div class="flex items-center gap-1.5 flex-wrap" id="lang-selector">
+                                    ${langBtns}
+                                </div>
+                                <div id="run-btn-wrap">${runBtn}</div>
+                            </div>
+                            <textarea id="html-code-editor" class="code-textarea" placeholder="Escribe tu código ${currentLang.label} aquí..." oninput="autoExpand(this); updateContent(this.value)">${note.content}</textarea>
+                        </div>
+                        <div id="preview-container" class="hidden w-full max-w-[1100px] bg-white rounded-[2rem] shadow-2xl border overflow-hidden">
+                            <div class="bg-gray-100 p-4 flex justify-between"><span class="text-xs font-bold">VISTA PREVIA</span><button onclick="closePreview()" class="text-red-500 font-bold">✕</button></div>
+                            <iframe id="canvas-preview" class="w-full min-h-[700px] border-none"></iframe>
+                        </div>
+                    </div>`;
+                setTimeout(() => autoExpand(document.getElementById('html-code-editor')), 50);
+            } else {
+                document.getElementById('excel-tools').classList.add('hidden');
+                document.getElementById('image-tools').classList.remove('hidden');
+                modalBody.innerHTML = `<div contenteditable="true" data-placeholder="Empieza a escribir..." class="outline-none min-h-[500px] whitespace-pre-wrap text-left !text-left"></div>`;
+                const editable = modalBody.firstChild;
+                editable.innerHTML = note.content;
+
+                // Inicializar resize para imágenes ya guardadas
+                initImageResize(editable);
+
+                editable.oninput = (e) => { note.content = e.target.innerHTML; save(); };
+            }
+            document.getElementById('editor-modal').classList.remove('hidden');
+        }
+
+        function renderExcel(note) {
+            let html = `<div class="overflow-x-auto rounded-3xl border shadow-lg bg-white"><table class="excel-table"><thead><tr>`;
+            note.content[0].forEach((cell, c) => {
+                html += `<th contenteditable="true" class="!text-left" oninput="editCell(0, ${c}, this.innerText)">${cell}</th>`;
+            });
+            html += `</tr></thead><tbody>`;
+            note.content.slice(1).forEach((row, r) => {
+                const ri = r + 1; 
+                html += `<tr>`;
+                row.forEach((cell, c) => {
+                    const color = note.cellColors[`${ri}-${c}`] || 'bg-white';
+                    html += `<td class="${color} ${darkColors.includes(color) ? 'text-white' : ''}" onclick="selectCell(${ri}, ${c}, event)">
+                        <div contenteditable="true" class="cell-editor !text-left" oninput="editCell(${ri}, ${c}, this.innerHTML)">${cell}</div>
+                    </td>`;
+                });
+                html += `</tr>`;
+            });
+            document.getElementById('modal-body').innerHTML = html + `</tbody></table></div>`;
+        }
+
+        function selectCell(r, c, e) {
+            activeCell = { r, c };
+            document.querySelectorAll('td, th').forEach(el => el.classList.remove('selected-cell'));
+            e.currentTarget.classList.add('selected-cell');
+        }
+
+        function applyColor(colorClass) {
+            const note = notes.find(n => n.id === currentId);
+            if(note.type === 'table' && activeCell) {
+                note.cellColors[`${activeCell.r}-${activeCell.c}`] = colorClass;
+                save(); renderExcel(note);
+            } else {
+                note.color = colorClass;
+                const area = document.getElementById('editor-content-area');
+                area.className = `p-8 md:p-12 h-full ${colorClass}`;
+                if(darkColors.includes(colorClass)) area.classList.add('dark-text-needed');
+                else area.classList.remove('dark-text-needed');
+                save();
+            }
+        }
+
+        function editCell(r, c, v) { notes.find(n => n.id === currentId).content[r][c] = v; save(); }
+        function updateContent(v) { notes.find(n => n.id === currentId).content = v; save(); }
+        function autoExpand(t) { t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px'; }
+
+        // ── Judge0 CE: IDs de lenguaje (ce.judge0.com, sin API key) ──
+        const JUDGE0_URL = 'https://ce.judge0.com';
+        const JUDGE0_LANGS = {
+            javascript: 63,   // Node.js 12.14.0
+            java:       62,   // Java (OpenJDK 13.0.1)
+            python:     71,   // Python 3.8.1
+            bash:       46,   // Bash 5.0.0
+            sql:        82,   // SQL (SQLite 3.27.2)
+        };
+        const BROWSER_LANGS  = ['html', 'css'];
+        const DISPLAY_ONLY   = ['json', 'markdown'];
+
+        async function judge0Run(languageId, code) {
+            // 1. Crear submission
+            const submitRes = await fetch(`${JUDGE0_URL}/submissions?base64_encoded=false&wait=false`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ source_code: code, language_id: languageId, stdin: '' })
+            });
+            if (!submitRes.ok) throw new Error(`Judge0 submit error: ${submitRes.status}`);
+            const { token } = await submitRes.json();
+            if (!token) throw new Error('No se recibió token de Judge0');
+
+            // 2. Polling hasta que termine (status_id >= 3)
+            for (let i = 0; i < 20; i++) {
+                await new Promise(r => setTimeout(r, 800));
+                const pollRes = await fetch(`${JUDGE0_URL}/submissions/${token}?base64_encoded=false&fields=stdout,stderr,status,compile_output`);
+                if (!pollRes.ok) continue;
+                const data = await pollRes.json();
+                if (data.status && data.status.id >= 3) return data;
+            }
+            throw new Error('Tiempo de espera agotado');
+        }
+
+        async function launchPreview() {
+            const note = notes.find(n => n.id === currentId);
+            const lang = note?.lang || 'html';
+            const code = document.getElementById('html-code-editor').value.trim();
+            if (!code) return;
+
+            const previewContainer = document.getElementById('preview-container');
+            const editorSheet     = document.getElementById('editor-sheet');
+
+            // ── HTML / CSS → iframe del navegador ──
+            if (BROWSER_LANGS.includes(lang)) {
+                previewContainer.classList.remove('hidden');
+                editorSheet.classList.add('hidden');
+                updatePreviewHeader('Vista previa');
+                const iframe = document.getElementById('canvas-preview');
+                const doc = iframe.contentDocument;
+                doc.open();
+                doc.write(lang === 'css'
+                    ? `<style>${code}</style><p style="padding:20px;font-family:sans-serif;color:#64748b">← CSS aplicado a esta página</p>`
+                    : `<script src="https://cdn.tailwindcss.com"><\/script><style>body{padding:40px;text-align:left}</style>${code}`);
+                doc.close();
+                return;
+            }
+
+            // ── JSON / Markdown → formatear ──
+            if (DISPLAY_ONLY.includes(lang)) {
+                previewContainer.classList.remove('hidden');
+                editorSheet.classList.add('hidden');
+                updatePreviewHeader(lang === 'markdown' ? 'Vista Markdown' : 'JSON formateado');
+                const iframe = document.getElementById('canvas-preview');
+                const doc = iframe.contentDocument;
+                doc.open();
+                if (lang === 'json') {
+                    let pretty = code;
+                    try { pretty = JSON.stringify(JSON.parse(code), null, 2); } catch(e) {}
+                    doc.write(`<pre style="padding:30px;font-family:monospace;font-size:14px;background:#0f172a;color:#10b981;min-height:100vh;margin:0;white-space:pre-wrap">${escHtml(pretty)}</pre>`);
+                } else {
+                    const html = code
+                        .replace(/^### (.+)/gm,'<h3>$1</h3>').replace(/^## (.+)/gm,'<h2>$1</h2>').replace(/^# (.+)/gm,'<h1>$1</h1>')
+                        .replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>').replace(/\*(.+?)\*/g,'<em>$1</em>')
+                        .replace(/`(.+?)`/g,'<code style="background:#f1f5f9;padding:2px 6px;border-radius:4px">$1</code>')
+                        .replace(/\n/g,'<br>');
+                    doc.write(`<div style="padding:40px;font-family:system-ui;line-height:1.7;max-width:800px">${html}</div>`);
+                }
+                doc.close();
+                return;
+            }
+
+            // ── JavaScript → iframe aislado (sin API) ──
+            if (lang === 'javascript') {
+                previewContainer.classList.remove('hidden');
+                editorSheet.classList.add('hidden');
+                updatePreviewHeader('Salida JavaScript');
+                const iframe = document.getElementById('canvas-preview');
+                const doc = iframe.contentDocument;
+                doc.open();
+                doc.write(`<style>body{margin:0;padding:24px;background:#0f172a;color:#10b981;font-family:'Fira Code',monospace;font-size:14px;}</style>
+                <div id="out"></div>
+                <script>
+                    const out=document.getElementById('out');
+                    const addLine=(txt,color)=>{const d=document.createElement('div');d.style.cssText='border-bottom:1px solid rgba(255,255,255,0.05);padding:4px 0;white-space:pre-wrap;color:'+(color||'#10b981');d.textContent=txt;out.appendChild(d);};
+                    console.log=(...a)=>addLine(a.map(x=>typeof x==='object'?JSON.stringify(x,null,2):String(x)).join(' '));
+                    console.error=(...a)=>addLine('✗ '+a.join(' '),'#ef4444');
+                    console.warn=(...a)=>addLine('⚠ '+a.join(' '),'#f59e0b');
+                    try{${code}}catch(e){addLine('✗ '+e.message,'#ef4444');}
+                <\/script>`);
+                doc.close();
+                return;
+            }
+
+            // ── Python / Java / Bash / SQL → Judge0 CE ──
+            const langId = JUDGE0_LANGS[lang];
+            if (!langId) { alert(`Ejecución de "${lang}" no soportada aún.`); return; }
+
+            showSpinner('Compilando y ejecutando...');
+            try {
+                const result = await judge0Run(langId, code);
+                hideSpinner();
+
+                const stdout        = result.stdout || '';
+                const stderr        = result.stderr || result.compile_output || '';
+                const statusId      = result.status?.id ?? 0;
+                const statusDesc    = result.status?.description || '';
+                const success       = statusId === 3; // 3 = Accepted
+
+                previewContainer.classList.remove('hidden');
+                editorSheet.classList.add('hidden');
+                updatePreviewHeader(`${lang.toUpperCase()} · ${statusDesc}`);
+
+                const iframe = document.getElementById('canvas-preview');
+                const doc = iframe.contentDocument;
+                doc.open();
+                doc.write(`<style>
+                    *{box-sizing:border-box;margin:0;padding:0}
+                    body{background:#0f172a;font-family:'Fira Code',monospace;font-size:14px;padding:28px;min-height:100vh}
+                    .badge{display:inline-block;font-size:10px;font-weight:700;padding:4px 12px;border-radius:6px;margin-bottom:16px;letter-spacing:.08em}
+                    .ok{background:rgba(16,185,129,.15);color:#10b981}
+                    .err{background:rgba(239,68,68,.15);color:#ef4444}
+                    .out{color:#10b981;white-space:pre-wrap;line-height:1.7}
+                    .errout{color:#ef4444;white-space:pre-wrap;line-height:1.7;margin-top:16px;border-top:1px solid rgba(239,68,68,.3);padding-top:16px}
+                    .empty{color:#475569;font-style:italic}
+                </style>
+                <span class="badge ${success ? 'ok' : 'err'}">${success ? '✓' : '✗'} ${escHtml(statusDesc)}</span>
+                ${stdout ? `<div class="out">${escHtml(stdout)}</div>` : '<div class="empty">Sin salida estándar</div>'}
+                ${stderr ? `<div class="errout">${escHtml(stderr)}</div>` : ''}`);
+                doc.close();
+
+            } catch(err) {
+                hideSpinner();
+                previewContainer.classList.remove('hidden');
+                editorSheet.classList.add('hidden');
+                updatePreviewHeader('Error');
+                const iframe = document.getElementById('canvas-preview');
+                const doc = iframe.contentDocument;
+                doc.open();
+                doc.write(`<div style="padding:30px;font-family:sans-serif;background:#0f172a;min-height:100vh">
+                    <p style="color:#ef4444;font-weight:bold;margin-bottom:12px">No se pudo ejecutar el código.</p>
+                    <p style="color:#94a3b8;font-size:13px">Verifica tu conexión a internet.<br>Error: ${escHtml(err.message)}</p>
+                </div>`);
+                doc.close();
+            }
+        }
+
+        function getMainFileName(lang) {
+            const names = { java:'Main.java', python:'main.py', javascript:'main.js', bash:'main.sh', sql:'main.sql' };
+            return names[lang] || 'main.txt';
+        }
+
+        function updatePreviewHeader(label) {
+            const header = document.querySelector('#preview-container > div:first-child span');
+            if (header) header.textContent = label;
+        }
+
+        function closePreview() {
+            document.getElementById('preview-container').classList.add('hidden');
+            document.getElementById('editor-sheet').classList.remove('hidden');
+        }
+        function addRow() { const n = notes.find(n=>n.id===currentId); n.content.push(new Array(n.content[0].length).fill('')); save(); renderExcel(n); }
+        function addCol() { const n = notes.find(n=>n.id===currentId); n.content.forEach(r => r.push('')); save(); renderExcel(n); }
+        function paintColumn() {
+            if(!activeCell) return;
+            const note = notes.find(n => n.id === currentId);
+            const color = note.cellColors[`${activeCell.r}-${activeCell.c}`] || 'bg-white';
+            note.content.forEach((_, r) => { if(r > 0) note.cellColors[`${r}-${activeCell.c}`] = color; });
+            save(); renderExcel(note);
+        }
+
+        function createNewFolder() { const name = prompt("Nombre:"); if(name && !folders.includes(name)) { folders.push(name); save(); } }
+        function changeNoteFolder(f) { notes.find(n=>n.id===currentId).folder = f; save(); }
+        function closeModal() { document.getElementById('editor-modal').classList.add('hidden'); render(); }
+        function deleteNote(id, e) { e.stopPropagation(); if(confirm('¿Eliminar?')) { notes = notes.filter(n => n.id !== id); save(); } }
+        function deleteFolder(f, e) { e.stopPropagation(); if(confirm('¿Eliminar carpeta?')) { folders = folders.filter(x => x !== f); notes.forEach(n => { if(n.folder === f) n.folder = 'General'; }); save(); } }
+        function cleanCurrentFolder() { if(confirm('¿Vaciar?')) { if(currentFolder === 'Todas') notes = []; else notes = notes.filter(n => n.folder !== currentFolder); save(); } }
+
+        /* ══════════════════════════════════════════════════════
+           SISTEMA DE DESCARGA
+           ══════════════════════════════════════════════════════ */
+
+        function toggleDownloadMenu(e) {
+            e.stopPropagation();
+            const menu = document.getElementById('download-menu');
+            const btn = e.currentTarget;
+            const rect = btn.getBoundingClientRect();
+            const isOpen = menu.style.pointerEvents === 'all';
+            if (isOpen) {
+                menu.style.opacity = '0';
+                menu.style.transform = 'translateY(-8px) scale(0.97)';
+                menu.style.pointerEvents = 'none';
+            } else {
+                menu.style.top = (rect.bottom + 8) + 'px';
+                menu.style.right = (window.innerWidth - rect.right) + 'px';
+                menu.style.opacity = '1';
+                menu.style.transform = 'translateY(0) scale(1)';
+                menu.style.pointerEvents = 'all';
+            }
+        }
+        document.addEventListener('click', () => {
+            const menu = document.getElementById('download-menu');
+            if (menu) {
+                menu.style.opacity = '0';
+                menu.style.transform = 'translateY(-8px) scale(0.97)';
+                menu.style.pointerEvents = 'none';
+            }
+        });
+
+        function showSpinner(msg) {
+            document.getElementById('spinner-label').textContent = msg || 'Generando archivo...';
+            document.getElementById('download-spinner').classList.add('show');
+        }
+        function hideSpinner() { document.getElementById('download-spinner').classList.remove('show'); }
+
+        function getFileName() {
+            const note = notes.find(n => n.id === currentId);
+            return (note?.title || 'nota').replace(/[^a-z0-9áéíóúñ ]/gi, '').trim().replace(/\s+/g, '_') || 'nota';
+        }
+
+        /** Crea un nodo limpio del contenido actual sin handles de resize ni UI */
+        function buildCleanContent() {
+            const note = notes.find(n => n.id === currentId);
+            const title = document.getElementById('modal-title').innerText.trim();
+
+            if (note.type === 'table') {
+                // Tabla → construir HTML limpio a partir de los datos
+                let rows = note.content;
+                let html = `<table border="1" cellpadding="10" style="border-collapse:collapse;width:100%;font-family:sans-serif">`;
+                html += `<thead><tr>${rows[0].map(c => `<th style="background:#f1f5f9;font-weight:700;text-align:left">${c}</th>`).join('')}</tr></thead>`;
+                html += `<tbody>${rows.slice(1).map(r => `<tr>${r.map(c => `<td>${c}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+                return { title, bodyHtml: html, bodyText: rows.map(r => r.join('\t')).join('\n') };
+            } else if (note.type === 'html-canvas') {
+                return { title, bodyHtml: `<pre style="font-family:monospace;white-space:pre-wrap">${escHtml(note.content)}</pre>`, bodyText: note.content };
+            } else {
+                // Nota de texto: clonar el editable y limpiar wrappers de resize
+                const editable = document.getElementById('modal-body').querySelector('[contenteditable="true"]');
+                const clone = editable ? editable.cloneNode(true) : document.createElement('div');
+                // Reemplazar cada .img-resize-wrapper con solo la imagen limpia
+                clone.querySelectorAll('.img-resize-wrapper').forEach(wrapper => {
+                    const img = wrapper.querySelector('img');
+                    if (img) {
+                        const cleanImg = img.cloneNode(false);
+                        cleanImg.removeAttribute('tabindex');
+                        wrapper.replaceWith(cleanImg);
+                    } else {
+                        wrapper.remove();
+                    }
+                });
+                // Quitar handles residuales
+                clone.querySelectorAll('.resize-handle, .size-label').forEach(el => el.remove());
+                return { title, bodyHtml: clone.innerHTML, bodyText: clone.innerText || clone.textContent };
+            }
+        }
+
+        function escHtml(str) { return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+        async function downloadNote(format) {
+            document.getElementById('download-menu').classList.remove('open');
+            const note = notes.find(n => n.id === currentId);
+            const filename = getFileName();
+            const { title, bodyHtml, bodyText } = buildCleanContent();
+
+            // ── Colores del tema ──
+            const colorMap = {
+                'bg-white': '#ffffff', 'bg-yellow-300': '#fde047', 'bg-orange-500': '#ff6b00',
+                'bg-red-500': '#ef4444', 'bg-pink-400': '#f472b6', 'bg-teal-400': '#2dd4bf',
+                'bg-lime-400': '#a3e635', 'bg-purple-800': '#6b21a8', 'bg-blue-950': '#0a2540',
+                'bg-slate-700': '#334155', 'bg-emerald-900': '#064e3b', 'bg-amber-900': '#78350f'
+            };
+            const bgColor = colorMap[note.color] || '#ffffff';
+            const textColor = darkColors.includes(note.color) ? '#ffffff' : '#0a2540';
+
+            if (format === 'html') {
+                showSpinner('Generando HTML...');
+                const blob = new Blob([buildStandaloneHtml(title, bodyHtml, bgColor, textColor)], { type: 'text/html;charset=utf-8' });
+                triggerDownload(URL.createObjectURL(blob), filename + '.html');
+                hideSpinner();
+
+            } else if (format === 'md') {
+                showSpinner('Generando Markdown...');
+                const md = htmlToMarkdown(title, bodyHtml, note);
+                const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
+                triggerDownload(URL.createObjectURL(blob), filename + '.md');
+                hideSpinner();
+
+            } else if (format === 'png') {
+                showSpinner('Generando imagen...');
+                await downloadAsPng(title, bodyHtml, bgColor, textColor, filename);
+                hideSpinner();
+
+            } else if (format === 'pdf') {
+                showSpinner('Generando PDF...');
+                await downloadAsPdf(title, bodyHtml, bgColor, textColor, filename);
+                hideSpinner();
+            }
+        }
+
+        function buildStandaloneHtml(title, body, bg, fg) {
+            return `<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>${title || 'Nota'}</title>
+  <style>
+    body { margin: 0; padding: 48px; background: ${bg}; color: ${fg}; font-family: system-ui, sans-serif; line-height: 1.7; }
+    h1 { font-size: 2.5rem; font-weight: 900; border-left: 10px solid #ff6b00; padding-left: 20px; margin-bottom: 2rem; }
+    img { max-width: 100%; border-radius: 12px; margin: 1rem 0; }
+    table { border-collapse: collapse; width: 100%; }
+    td, th { border: 1px solid rgba(0,0,0,0.12); padding: 12px; text-align: left; }
+    th { background: rgba(0,0,0,0.05); font-weight: 700; }
+    .meta { font-size: 11px; opacity: 0.5; margin-bottom: 2rem; text-transform: uppercase; font-weight: 700; letter-spacing: 0.08em; }
+  </style>
+</head>
+<body>
+  <p class="meta">Exportado desde Smart-Notes · ${new Date().toLocaleDateString('es-CO')}</p>
+  <h1>${title || 'Sin título'}</h1>
+  <div>${body}</div>
+</body>
+</html>`;
+        }
+
+        function htmlToMarkdown(title, bodyHtml, note) {
+            let md = `# ${title || 'Sin título'}\n\n`;
+            md += `> Exportado desde Smart-Notes · ${new Date().toLocaleDateString('es-CO')}\n\n`;
+
+            if (note.type === 'table') {
+                const rows = note.content;
+                if (rows.length > 0) {
+                    md += '| ' + rows[0].join(' | ') + ' |\n';
+                    md += '| ' + rows[0].map(() => '---').join(' | ') + ' |\n';
+                    rows.slice(1).forEach(row => { md += '| ' + row.join(' | ') + ' |\n'; });
+                }
+            } else if (note.type === 'html-canvas') {
+                md += '```html\n' + note.content + '\n```\n';
+            } else {
+                // Convertir HTML a Markdown básico
+                const tmp = document.createElement('div');
+                tmp.innerHTML = bodyHtml;
+                md += nodeToMd(tmp).trim();
+            }
+            return md;
+        }
+
+        function nodeToMd(node) {
+            let out = '';
+            node.childNodes.forEach(child => {
+                if (child.nodeType === 3) {
+                    out += child.textContent;
+                } else if (child.nodeType === 1) {
+                    const tag = child.tagName.toLowerCase();
+                    const inner = nodeToMd(child);
+                    if (tag === 'br') out += '\n';
+                    else if (tag === 'b' || tag === 'strong') out += `**${inner}**`;
+                    else if (tag === 'i' || tag === 'em') out += `*${inner}*`;
+                    else if (tag === 'h1') out += `\n# ${inner}\n`;
+                    else if (tag === 'h2') out += `\n## ${inner}\n`;
+                    else if (tag === 'h3') out += `\n### ${inner}\n`;
+                    else if (tag === 'p') out += `\n${inner}\n`;
+                    else if (tag === 'li') out += `\n- ${inner}`;
+                    else if (tag === 'img') {
+                        const src = child.src || '';
+                        const alt = child.alt || 'imagen';
+                        // Base64 images: incluir referencia
+                        out += `\n![${alt}](${src.startsWith('data:') ? '[imagen_base64]' : src})\n`;
+                    }
+                    else out += inner;
+                }
+            });
+            return out;
+        }
+
+        async function downloadAsPng(title, bodyHtml, bg, fg, filename) {
+            const html = buildStandaloneHtml(title, bodyHtml, bg, fg);
+            // Usamos un iframe oculto + canvas para capturar
+            return new Promise((resolve) => {
+                const iframe = document.createElement('iframe');
+                iframe.style.cssText = 'position:fixed;left:-9999px;top:0;width:900px;height:1200px;border:none;visibility:hidden;';
+                document.body.appendChild(iframe);
+                const doc = iframe.contentDocument;
+                doc.open(); doc.write(html); doc.close();
+
+                setTimeout(() => {
+                    try {
+                        // Intentar con html2canvas si disponible, si no usar print fallback
+                        if (typeof html2canvas !== 'undefined') {
+                            html2canvas(iframe.contentDocument.body, { scale: 2, backgroundColor: bg, useCORS: true }).then(canvas => {
+                                triggerDownload(canvas.toDataURL('image/png'), filename + '.png');
+                                document.body.removeChild(iframe);
+                                resolve();
+                            });
+                        } else {
+                            // Fallback: abrir ventana para que el usuario use "Guardar como imagen"
+                            document.body.removeChild(iframe);
+                            const win = window.open('', '_blank');
+                            win.document.write(buildStandaloneHtml(title, bodyHtml, bg, fg));
+                            win.document.write('<script>window.onload=()=>{window.print()}<\/script>');
+                            win.document.close();
+                            resolve();
+                        }
+                    } catch(err) {
+                        document.body.removeChild(iframe);
+                        // Fallback seguro
+                        const win = window.open('', '_blank');
+                        if (win) { win.document.write(buildStandaloneHtml(title, bodyHtml, bg, fg)); win.document.close(); }
+                        resolve();
+                    }
+                }, 600);
+            });
+        }
+
+        async function downloadAsPdf(title, bodyHtml, bg, fg, filename) {
+            // Método nativo: abrimos ventana con el HTML y activamos print to PDF del navegador
+            return new Promise((resolve) => {
+                const printHtml = buildStandaloneHtml(title, bodyHtml, bg, fg)
+                    .replace('</style>', `
+                        @media print {
+                            body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+                        }
+                    </style>`)
+                    + `<script>
+                        window.onload = function() {
+                            setTimeout(function() {
+                                window.print();
+                            }, 400);
+                        };
+                    <\/script>`;
+                const win = window.open('', '_blank');
+                if (win) {
+                    win.document.open();
+                    win.document.write(printHtml);
+                    win.document.close();
+                }
+                setTimeout(resolve, 800);
+            });
+        }
+
+        function triggerDownload(url, name) {
+            const a = document.createElement('a');
+            a.href = url; a.download = name;
+            document.body.appendChild(a); a.click();
+            document.body.removeChild(a);
+            setTimeout(() => URL.revokeObjectURL(url), 2000);
+        }
+
+        /* ══════════════════════════════════════════════════════ */
+
+        function render() {
+            const folderList = document.getElementById('folder-list');
+            folderList.innerHTML = ['Todas', ...folders].map(f => `
+                <div onclick="currentFolder='${f}'; render()" class="folder-pill px-6 py-2.5 rounded-full text-[11px] font-black uppercase bg-white text-slate-500 shadow-sm ${currentFolder === f ? 'active' : ''}">
+                    ${f}${(f !== 'Todas' && f !== 'General') ? `<span onclick="deleteFolder('${f}', event)" class="delete-folder-btn ml-1">✕</span>` : ''}
+                </div>`).join('');
+
+            const grid = document.getElementById('notes-grid');
+            const search = document.getElementById('search-input').value.toLowerCase();
+            const filtered = notes.filter(n => (n.title.toLowerCase().includes(search) || n.content.toString().toLowerCase().includes(search)) && (currentFolder === 'Todas' || n.folder === currentFolder));
+            
+            grid.innerHTML = filtered.map(n => `
+                <div class="card-note ${n.color} p-10 cursor-pointer group ${darkColors.includes(n.color) ? 'text-white' : 'text-[#0a2540]'}" onclick="openEditor(${n.id})">
+                    <button onclick="deleteNote(${n.id}, event)" class="delete-btn shadow-md">✕</button>
+                    <div class="flex items-center gap-2 mb-6">
+                        <span class="text-[9px] font-black text-white bg-[#0a2540] px-3 py-1.5 rounded-lg uppercase">${n.folder}</span>
+                        <span class="text-[9px] font-black opacity-40 uppercase">${n.type.replace('html-canvas', 'CANVAS')}</span>
+                    </div>
+                    <h3 class="text-xl font-black uppercase leading-tight h-14 line-clamp-2 !text-left">${n.title || 'SIN TÍTULO'}</h3>
+                    <div class="mt-8 border-t pt-6 border-black/5 flex justify-end">
+                        <div class="bg-[#ff6b00] text-white px-8 py-2.5 rounded-xl text-[10px] font-black uppercase shadow-lg">Abrir</div>
+                    </div>
+                </div>`).join('');
+        }
+        render();
+
+        
+    </script>
+</body>
+</html>
